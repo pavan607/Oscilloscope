@@ -3,7 +3,6 @@ from tkinter import ttk
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import numpy as np
 
 class GainPlotApp:
     def __init__(self, master):
@@ -64,7 +63,7 @@ class GainPlotApp:
                 channel_frame, 
                 text=channel["name"],
                 variable=channel["var_visible"],
-                command=self.update_plot
+                command=lambda idx=i: self.on_channel_visibility_change(idx)
             )
             channel_cb.pack(side=tk.LEFT, padx=5)
             
@@ -144,22 +143,22 @@ class GainPlotApp:
         # Create time axis from 0 to 10 seconds
         time = np.linspace(0, 10, 1000)
         
-        # Create Channel 1 data
+        # Create Channel 1: Sine wave
         ch1_data = pd.DataFrame({
             'Time': time,
-            'Amplitude': np.sin(2 * np.pi * 1 * time)
+            'Amplitude': np.sin(2 * np.pi * 1 * time)  # 1 Hz sine wave
         })
         
-        # Create Channel 2 data
+        # Create Channel 2: Cosine wave
         ch2_data = pd.DataFrame({
             'Time': time,
-            'Amplitude': np.cos(2 * np.pi * 0.5 * time)
+            'Amplitude': np.cos(2 * np.pi * 0.5 * time)  # 0.5 Hz cosine wave
         })
         
-        # Create Channel 3 data
+        # Create Channel 3: Square wave
         ch3_data = pd.DataFrame({
             'Time': time,
-            'Amplitude': np.sign(np.sin(2 * np.pi * 0.25 * time))
+            'Amplitude': np.sign(np.sin(2 * np.pi * 0.25 * time))  # 0.25 Hz square wave
         })
         
         self.channel_data = {
@@ -170,25 +169,51 @@ class GainPlotApp:
         
         print("Created dummy data for testing")
 
+    def on_channel_visibility_change(self, channel_idx):
+        """Handle channel visibility changes"""
+        # If the active channel is being hidden, clear its cursors
+        if channel_idx == self.active_channel and not self.channels[channel_idx]["var_visible"].get():
+            self.clear_cursors()
+        
+        # Update the plot
+        self.update_plot()
+        
+        # If no channels are visible after this change, make sure cursors are cleared
+        has_visible_channels = any(channel["var_visible"].get() for channel in self.channels)
+        if not has_visible_channels:
+            self.clear_cursors()
+
+    def clear_cursors(self):
+        """Clear all cursors and measurements"""
+        self.cursor_clicks = []
+        self.h_cursor_clicks = []
+        self.cursor1.set_visible(False)
+        self.cursor2.set_visible(False)
+        self.cursor_h1.set_visible(False)
+        self.cursor_h2.set_visible(False)
+        self.delta_text.set_visible(False)
+        self.delta_y_text.set_visible(False)
+        self.canvas.draw()
+
     def set_active_channel(self, channel_idx):
+        # Store the previous active channel for reference
+        prev_channel = self.active_channel
+        
+        # Update active channel
         self.active_channel = channel_idx
         
-        # Update cursor colors when active channel changes
-        if self.cursor1.get_visible():
-            self.cursor1.set_color(self.channels[channel_idx]["cursor_color"])
-        if self.cursor2.get_visible():
-            self.cursor2.set_color(self.channels[channel_idx]["cursor_color"])
-        if self.cursor_h1.get_visible():
-            self.cursor_h1.set_color(self.channels[channel_idx]["cursor_color"])
-        if self.cursor_h2.get_visible():
-            self.cursor_h2.set_color(self.channels[channel_idx]["cursor_color"])
-            
-        # Update delta text to show active channel
-        if self.delta_text.get_visible():
-            self.update_vertical_delta()
-        if self.delta_y_text.get_visible():
-            self.update_horizontal_delta()
-            
+        # Clear cursors if the newly active channel is not visible
+        if not self.channels[channel_idx]["var_visible"].get():
+            self.clear_cursors()
+            # Make the channel visible since it's now active
+            self.channels[channel_idx]["var_visible"].set(True)
+            self.update_plot()
+            return
+        
+        # Clear previous cursors and measurements when changing active channel
+        self.clear_cursors()
+        
+        # Update the plot to refresh with new active channel settings
         self.canvas.draw()
 
     def plot(self):
@@ -258,28 +283,38 @@ class GainPlotApp:
                                          bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.7),
                                          visible=False)
 
-        # Restore cursor positions if they were active
-        if self.cursor_clicks:
-            if len(self.cursor_clicks) >= 1:
-                self.cursor1.set_xdata([self.cursor_clicks[0]])
-                self.cursor1.set_visible(True)
-            if len(self.cursor_clicks) >= 2:
-                self.cursor2.set_xdata([self.cursor_clicks[1]])
-                self.cursor2.set_visible(True)
-                self.update_vertical_delta()
-        
-        if self.h_cursor_clicks:
-            if len(self.h_cursor_clicks) >= 1:
-                self.cursor_h1.set_ydata([self.h_cursor_clicks[0]])
-                self.cursor_h1.set_visible(True)
-            if len(self.h_cursor_clicks) >= 2:
-                self.cursor_h2.set_ydata([self.h_cursor_clicks[1]])
-                self.cursor_h2.set_visible(True)
-                self.update_horizontal_delta()
+        # Only restore cursor positions if the active channel is visible
+        if self.channels[self.active_channel]["var_visible"].get():
+            if self.cursor_clicks:
+                if len(self.cursor_clicks) >= 1:
+                    self.cursor1.set_xdata([self.cursor_clicks[0]])
+                    self.cursor1.set_visible(True)
+                if len(self.cursor_clicks) >= 2:
+                    self.cursor2.set_xdata([self.cursor_clicks[1]])
+                    self.cursor2.set_visible(True)
+                    self.update_vertical_delta()
+            
+            if self.h_cursor_clicks:
+                if len(self.h_cursor_clicks) >= 1:
+                    self.cursor_h1.set_ydata([self.h_cursor_clicks[0]])
+                    self.cursor_h1.set_visible(True)
+                if len(self.h_cursor_clicks) >= 2:
+                    self.cursor_h2.set_ydata([self.h_cursor_clicks[1]])
+                    self.cursor_h2.set_visible(True)
+                    self.update_horizontal_delta()
+        else:
+            # If active channel is not visible, clear cursors
+            self.cursor_clicks = []
+            self.h_cursor_clicks = []
 
         self.canvas.draw()
 
     def update_plot(self, event=None):
+        # Check if active channel is visible
+        if not self.channels[self.active_channel]["var_visible"].get():
+            # Clear cursors if active channel becomes invisible
+            self.clear_cursors()
+        
         self.plot()
 
     def on_mouse_move(self, event):
@@ -293,6 +328,10 @@ class GainPlotApp:
 
     def on_click(self, event):
         if event.inaxes != self.ax:
+            return
+            
+        # Check if the active channel is visible before allowing cursor placement
+        if not self.channels[self.active_channel]["var_visible"].get():
             return
 
         x = event.xdata
@@ -366,6 +405,10 @@ class GainPlotApp:
 
     def on_drag(self, event):
         if self.dragging is None or event.inaxes != self.ax:
+            return
+
+        # Check if the active channel is visible before allowing cursor manipulation
+        if not self.channels[self.active_channel]["var_visible"].get():
             return
 
         if self.dragging == 'v1':
